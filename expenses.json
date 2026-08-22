@@ -1,0 +1,38 @@
+[
+  {
+    "id": 1,
+    "description": "Recreation",
+    "amount": 100,
+    "created_at": "2026-08-19T15:52:06.961651900Z",
+    "updated_at": "2026-08-19T15:52:06.961651900Z",
+    "month": 8,
+    "categories": "Entertainment"
+  },
+  {
+    "id": 2,
+    "description": "Restaurant",
+    "amount": 500,
+    "created_at": "2026-08-19T15:52:17.915445800Z",
+    "updated_at": "2026-08-19T15:52:17.915445800Z",
+    "month": 8,
+    "categories": "Food"
+  },
+  {
+    "id": 3,
+    "description": "Farm City",
+    "amount": 500,
+    "created_at": "2026-08-22T07:04:43.957618100Z",
+    "updated_at": "2026-08-22T07:13:38.322267300Z",
+    "month": 8,
+    "categories": "Food"
+  },
+  {
+    "id": 4,
+    "description": "\"Bolt\"",
+    "amount": 1000,
+    "created_at": "2026-08-22T07:20:27.978847900Z",
+    "updated_at": "2026-08-22T07:20:27.978847900Z",
+    "month": 8,
+    "categories": "Transport"
+  }
+]
