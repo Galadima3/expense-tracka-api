@@ -20,7 +20,7 @@ This project is an implementation of the [Expense Tracker](https://roadmap.sh/pr
 ## Installation
 
 ```bash
-git clone [<repo-url>](https://github.com/Galadima3/expense-tracka-cli)
+git clone https://github.com/Galadima3/expense-tracka-cli
 cd expense-tracka-cli
 cargo build --release
 ```
