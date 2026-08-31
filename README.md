@@ -10,12 +10,25 @@ This project is an implementation of the [Expense Tracker](https://roadmap.sh/pr
 - Partial updates: only pass the fields you want to change
 - Category tagging via a fixed set of categories
 - Running total summary of all expenses
+- Per-expense timestamps: `created_at` and `updated_at` (`updated_at` is refreshed automatically on edits)
+- Month tracking: each expense records the month it was created (`month` field)
 - Persistent storage to a local JSON file (`expenses.json`)
 - Interactive loop with built-in help, so invalid input doesn't crash the app
 
 ## Requirements
 
 - Rust and Cargo (install via [rustup](https://rustup.rs/))
+
+## Dependencies
+
+The project uses the following crates (see [Cargo.toml](Cargo.toml)); all are fetched automatically by Cargo when you build:
+
+| Crate        | Purpose                                        |
+|--------------|------------------------------------------------|
+| `clap`       | Command-line parsing for the REPL subcommands  |
+| `serde`      | (De)serialization of expense data              |
+| `serde_json` | JSON file persistence                          |
+| `chrono`     | Timestamps (`created_at` / `updated_at`)       |
 
 ## Installation
 
@@ -43,15 +56,15 @@ Type commands at the prompt one at a time. Type `help` to reprint the command re
 
 ### Commands
 
-| Command  | Description                          | Flags |
-|----------|---------------------------------------|-------|
-| `add`    | Add a new expense                     | `-d, --description <TEXT>` `-a, --amount <NUMBER>` `-c, --category <CATEGORY>` |
-| `fetch`  | Fetch a single expense by ID          | `-i, --id <ID>` |
-| `update` | Update an existing expense (partial)  | `-i, --id <ID>` `-d, --description <TEXT>` `-a, --amount <NUMBER>` `-c, --category <CATEGORY>` |
-| `delete` | Delete an expense by ID               | `-i, --id <ID>` |
-| `list`   | List all expenses                     | none |
-| `summary`| Show the total of all expenses        | none |
-| `quit`   | Exit the app                          | none |
+| Command   | Description                          | Flags |
+|-----------|--------------------------------------|-------|
+| `add`     | Add a new expense                    | `-d, --description <TEXT>` `-a, --amount <NUMBER>` `-c, --category <CATEGORY>` |
+| `fetch`   | Fetch a single expense by ID         | `-i, --id <ID>` |
+| `update`  | Update an existing expense (partial) | `-i, --id <ID>` `-d, --description <TEXT>` `-a, --amount <NUMBER>` `-c, --category <CATEGORY>` |
+| `delete`  | Delete an expense by ID              | `-i, --id <ID>` |
+| `list`    | List all expenses                    | none |
+| `summary` | Show the total of all expenses       | none |
+| `quit`    | Exit the app                         | none |
 
 For `update`, only include the flags for fields you want to change; omitted fields are left as-is.
 
@@ -71,15 +84,18 @@ Valid values for `--category`:
 > add -d "Lunch" -a 1500 -c food
 > add -d "Bus fare" -a 300 -c transport
 > list
-#1 | Lunch | 1500 | Food | 2026-08-22 10:15:03 UTC
-#2 | Bus fare | 300 | Transport | 2026-08-22 10:15:20 UTC
+#1 | Lunch | 1500 | Food | 2026-08-22 10:15:03.123456789 UTC
+#2 | Bus fare | 300 | Transport | 2026-08-22 10:15:20.987654321 UTC
 
 > fetch -i 1
 Expense {
     id: 1,
     description: "Lunch",
     amount: 1500,
-    ...
+    created_at: 2026-08-22 10:15:03.123456789 UTC,
+    updated_at: 2026-08-22 10:15:03.123456789 UTC,
+    month: 8,
+    categories: Food,
 }
 
 > update -i 1 -a 1800
@@ -99,13 +115,36 @@ Goodbye.
 
 Expenses are stored in `expenses.json` in the directory the app is run from. The file is created automatically on the first successful `add`; if it doesn't exist yet, `fetch`, `list`, and `summary` simply report no data rather than erroring.
 
+Each entry is a JSON object with the following shape:
+
+```json
+{
+  "id": 1,
+  "description": "Lunch",
+  "amount": 1500,
+  "created_at": "2026-08-22T10:15:03.123456789Z",
+  "updated_at": "2026-08-22T10:15:03.123456789Z",
+  "month": 8,
+  "categories": "Food"
+}
+```
+
+| Field         | Type   | Description                             |
+|---------------|--------|-----------------------------------------|
+| `id`          | number | Auto-incremented unique identifier      |
+| `description` | string | Short description of the expense        |
+| `amount`      | number | Cost as a whole number                  |
+| `created_at`  | string | Creation timestamp (UTC, RFC 3339)      |
+| `updated_at`  | string | Last-modified timestamp (UTC, RFC 3339) |
+| `month`       | number | Month of creation (1–12)                |
+| `categories`  | string | Category, one of the valid category values |
+
 ## Project structure
 
 ```
 src/
 ├── main.rs        # REPL loop and command dispatch
-├── dto.rs         # CLI argument definitions and request structs
-├── model.rs       # Expense and Categories data types
+├── model.rs       # CLI argument definitions, request structs, and the Expense / Categories data types
 └── repository.rs  # File-backed persistence and business logic
 ```
 
@@ -113,4 +152,4 @@ src/
 
 - Amounts are stored as whole `u32` values (no decimal/fractional currency support yet)
 - Command input is split on whitespace, so quoted multi-word arguments (e.g. `-d "coffee with friends"`) aren't supported
-- Error handling is functional but not yet exhaustive (see `// TODO: Add Error Handling` in `main.rs`)
+- Errors are caught and printed per command without crashing the REPL, but there are no custom error types yet — persistence and business logic return `Box<dyn Error>`
