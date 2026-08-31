@@ -1,10 +1,8 @@
-use crate::dto::UpdateExpenseRequest;
-use crate::{dto::ExpenseRequest, model::Expense};
+use crate::model::{Expense, ExpenseRequest, UpdateExpenseRequest};
 use chrono::{Datelike, Utc};
 use std::path::Path;
 use std::{error::Error, fs};
 
-// Load expenses
 pub fn load_expenses(file_name: &str) -> Result<Vec<Expense>, Box<dyn Error>> {
     if !Path::new(file_name).exists() {
         return Ok(Vec::new());
@@ -21,7 +19,6 @@ pub fn load_expenses(file_name: &str) -> Result<Vec<Expense>, Box<dyn Error>> {
     Ok(expenses)
 }
 
-// Save Expense
 fn save_expense(file_name: &str, expenses: &[Expense]) -> Result<(), Box<dyn Error>> {
     let data = serde_json::to_string_pretty(expenses)?;
     fs::write(file_name, data)?;
@@ -29,7 +26,6 @@ fn save_expense(file_name: &str, expenses: &[Expense]) -> Result<(), Box<dyn Err
     Ok(())
 }
 
-// Create Expense
 pub fn create_expense(
     file_name: &str,
     expense_request: ExpenseRequest,
@@ -55,7 +51,7 @@ pub fn create_expense(
     Ok(())
 }
 
-// Read Particular Expense (by ID)
+// Get Particular Expense (by ID)
 pub fn get_specific_expense(
     expense_id: u32,
     file_name: &str,
@@ -64,7 +60,6 @@ pub fn get_specific_expense(
     Ok(expenses.into_iter().find(|x| x.id == expense_id))
 }
 
-// Update Expense
 pub fn update_expense(
     expense_id: u32,
     file_name: &str,
@@ -96,20 +91,19 @@ pub fn update_expense(
     Ok(())
 }
 
-// Delete Expense
 pub fn delete_expense(expense_id: u32, file_name: &str) -> Result<(), Box<dyn Error>> {
     let mut expenses = load_expenses(file_name)?;
 
-    let original_len = expenses.len();
-
-    expenses.retain(|expense| expense.id != expense_id);
-    if expenses.len() == original_len {
-        return Err("Expense not found".into());
+    if let Some(index) = expenses.iter().position(|expense| expense.id == expense_id) {
+        expenses.remove(index);
+        save_expense(file_name, &expenses)?;
+        Ok(())
+    } else {
+        Err("Expense not found".into())
     }
-    save_expense(file_name, &expenses)
+
 }
 
-// Get Summary of Expense
 pub fn get_summary_of_expense(file_name: &str) -> Result<u32, Box<dyn Error>> {
     let expenses = load_expenses(file_name)?;
 

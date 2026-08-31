@@ -1,14 +1,12 @@
 use clap::{CommandFactory, Parser};
 use std::io::{self, Write};
 
-mod dto;
+
 mod model;
 mod repository;
 
-use dto::Cli;
-
 use crate::{
-    dto::{Commands, ExpenseRequest, UpdateExpenseRequest},
+    model::{Commands, ExpenseRequest, UpdateExpenseRequest, Cli},
     repository::{
         create_expense, delete_expense, get_specific_expense, get_summary_of_expense,
         list_expenses, update_expense,
@@ -19,6 +17,7 @@ const FILE_NAME: &str = "expenses.json";
 
 fn main() {
     println!("Expense Tracker\n");
+    // Special use of unwrap() here
     Cli::command().print_help().unwrap();
     println!("\n\nType `help` to see this again, or `quit` to exit.\n");
 
@@ -40,12 +39,13 @@ fn main() {
         }
 
         if input == "help" {
-            Cli::command().print_help().unwrap();
+            if let Err(err) = Cli::command().print_help() {
+                eprintln!("Failed to print help: {err}")
+            }
             println!();
             continue;
         }
 
-        
         let tokenized_args = std::iter::once("expense-tracker").chain(input.split_whitespace());
 
         let args = match Cli::try_parse_from(tokenized_args) {
