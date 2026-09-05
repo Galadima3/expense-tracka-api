@@ -1,143 +1,66 @@
-use clap::{CommandFactory, Parser};
-use std::io::{self, Write};
+use std::error::Error;
 
-
-mod model;
-mod repository;
+use axum::{
+    Router,
+    routing::{get},
+};
+use dotenvy::dotenv;
+use tower_http::trace::TraceLayer;
 
 use crate::{
-    model::{Commands, ExpenseRequest, UpdateExpenseRequest, Cli},
-    repository::{
-        create_expense, delete_expense, get_specific_expense, get_summary_of_expense,
-        list_expenses, update_expense,
+    core::{app_state::AppState, config::Config, db::init_db},
+    handler::{
+        create_expense_handler, delete_expense_handler, find_expense_handler,
+        list_expenses_handler, update_expense_handler,
     },
 };
 
-const FILE_NAME: &str = "expenses.json";
+mod core;
+mod dto;
+mod handler;
+mod model;
+mod repository;
+mod service;
 
-fn main() {
-    println!("Expense Tracker\n");
-    // Special use of unwrap() here
-    Cli::command().print_help().unwrap();
-    println!("\n\nType `help` to see this again, or `quit` to exit.\n");
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn Error>> {
+    dotenv().ok();
+    tracing_subscriber::fmt::init();
 
-    loop {
-        print!("\n> ");
-        if io::stdout().flush().is_err() {
-            eprintln!("Failed to flush stdout.");
-        }
+    let config = Config::from_env();
 
-        let mut input = String::new();
-        if io::stdin().read_line(&mut input).is_err() {
-            eprintln!("Failed to read input, try again.");
-            continue;
-        }
+    let pool = init_db(&config.database_url).await?;
 
-        let input = input.trim();
-        if input.is_empty() {
-            continue;
-        }
+    let app_state = AppState { db_pool: pool };
 
-        if input == "help" {
-            if let Err(err) = Cli::command().print_help() {
-                eprintln!("Failed to print help: {err}")
-            }
-            println!();
-            continue;
-        }
+    let app = app(app_state);
 
-        let tokenized_args = std::iter::once("expense-tracker").chain(input.split_whitespace());
+    let listener = tokio::net::TcpListener::bind(&config.server_addr).await?;
 
-        let args = match Cli::try_parse_from(tokenized_args) {
-            Ok(args) => args,
-            Err(error) => {
-                println!("{error}");
-                continue;
-            }
-        };
+    axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown_signal())
+        .await?;
+    Ok(())
+}
 
-        match args.command {
-            Commands::Quit => {
-                println!("Goodbye.");
-                break;
-            }
+fn app(state: AppState) -> Router {
+    let expense_routes = Router::new()
+        .route("/", get(list_expenses_handler).post(create_expense_handler))
+        .route(
+            "/{id}",
+            get(find_expense_handler)
+                .patch(update_expense_handler)
+                .delete(delete_expense_handler),
+        );
+    Router::new()
+        .route("/", get(|| async { "Hello World!" }))
+        .nest("/expense", expense_routes)
+        .layer(TraceLayer::new_for_http())
+        .with_state(state)
+}
 
-            Commands::Add {
-                description,
-                amount,
-                category,
-            } => {
-                let request = ExpenseRequest {
-                    description,
-                    amount,
-                    category,
-                };
-                if let Err(error) = create_expense(FILE_NAME, request) {
-                    eprintln!("Error creating expense: {error}");
-                }
-            }
-
-            Commands::Fetch { id } => match get_specific_expense(id, FILE_NAME) {
-                Ok(Some(expense)) => {
-                    println!("{:#?}", expense);
-                }
-                Ok(None) => {
-                    println!("Expense with ID {id} not found");
-                }
-                Err(error) => {
-                    eprintln!("Error fetching expense: {error}");
-                }
-            },
-
-            // Update Expense
-            Commands::Update {
-                id,
-                description,
-                amount,
-                category,
-            } => {
-                let request = UpdateExpenseRequest {
-                    description,
-                    amount,
-                    category,
-                };
-
-                match update_expense(id, FILE_NAME, request) {
-                    Ok(()) => {
-                        println!("Expense {id} updated successfully.");
-                    }
-                    Err(error) => {
-                        eprintln!("Error updating expense: {error}");
-                    }
-                }
-            }
-
-            // Delete Expense
-            Commands::Delete { id } => match delete_expense(id, FILE_NAME) {
-                Ok(()) => {
-                    println!("Expense {id} deleted successfully.");
-                }
-                Err(error) => {
-                    eprintln!("Error deleting expense: {error}");
-                }
-            },
-
-            // Expense Summary
-            Commands::Summary => match get_summary_of_expense(FILE_NAME) {
-                Ok(total) => {
-                    println!("Total expenses: {total}");
-                }
-                Err(error) => {
-                    eprintln!("Error calculating summary: {error}");
-                }
-            },
-
-            Commands::List => match list_expenses(FILE_NAME) {
-                Ok(()) => {}
-                Err(error) => {
-                    eprintln!("Error listing expenses: {}", error);
-                }
-            },
-        }
-    }
+async fn shutdown_signal() {
+    tokio::signal::ctrl_c()
+        .await
+        .expect("Failed to install Ctrl+C handler")
 }

@@ -1,130 +1,78 @@
-use crate::model::{Expense, ExpenseRequest, UpdateExpenseRequest};
 use chrono::{Datelike, Utc};
-use std::path::Path;
-use std::{error::Error, fs};
+use sqlx::PgPool;
 
-pub fn load_expenses(file_name: &str) -> Result<Vec<Expense>, Box<dyn Error>> {
-    if !Path::new(file_name).exists() {
-        return Ok(Vec::new());
-    }
+use crate::dto::{ExpenseRequest, UpdateExpenseRequest};
+use crate::model::Expense;
 
-    let data = fs::read_to_string(file_name)?;
-
-    if data.trim().is_empty() {
-        return Ok(Vec::new());
-    }
-
-    let expenses = serde_json::from_str(&data)?;
-
-    Ok(expenses)
-}
-
-fn save_expense(file_name: &str, expenses: &[Expense]) -> Result<(), Box<dyn Error>> {
-    let data = serde_json::to_string_pretty(expenses)?;
-    fs::write(file_name, data)?;
-
-    Ok(())
-}
-
-pub fn create_expense(
-    file_name: &str,
+pub async fn create_expense(
+    pool: &PgPool,
     expense_request: ExpenseRequest,
-) -> Result<(), Box<dyn Error>> {
-    let mut expenses = load_expenses(file_name)?;
+) -> Result<Expense, sqlx::Error> {
+    let month = Utc::now().month() as i32;
 
-    let timing = Utc::now();
+    let new_expense = sqlx::query_as::<_, Expense>(
+        r#"
+        INSERT INTO expenses (description, amount, month, category)
+        VALUES ($1, $2, $3, $4)
+        RETURNING *
+        "#,
+    )
+    .bind(&expense_request.description)
+    .bind(expense_request.amount)
+    .bind(month)
+    .bind(&expense_request.category)
+    .fetch_one(pool)
+    .await?;
 
-    let expense = Expense {
-        amount: expense_request.amount,
-        id: expenses.iter().map(|e| e.id).max().unwrap_or(0) + 1,
-        categories: expense_request.category,
-        description: expense_request.description,
-        created_at: timing,
-        updated_at: timing,
-        month: timing.month(),
-    };
-
-    expenses.push(expense);
-
-    save_expense(file_name, &expenses)?;
-
-    Ok(())
+    Ok(new_expense)
 }
 
-// Get Particular Expense (by ID)
-pub fn get_specific_expense(
-    expense_id: u32,
-    file_name: &str,
-) -> Result<Option<Expense>, Box<dyn Error>> {
-    let expenses = load_expenses(file_name)?;
-    Ok(expenses.into_iter().find(|x| x.id == expense_id))
+pub async fn list_expenses(pool: &PgPool) -> Result<Vec<Expense>, sqlx::Error> {
+    sqlx::query_as::<_, Expense>("SELECT * FROM expenses ORDER BY created_at DESC")
+        .fetch_all(pool)
+        .await
 }
 
-pub fn update_expense(
-    expense_id: u32,
-    file_name: &str,
+pub async fn find_expense_by_id(pool: &PgPool, expense_id: i32) -> Result<Expense, sqlx::Error> {
+    sqlx::query_as::<_, Expense>(
+        r#"
+        SELECT * FROM expenses WHERE id = $1
+        "#,
+    )
+    .bind(expense_id)
+    .fetch_one(pool)
+    .await
+}
+
+pub async fn update_expense(
+    pool: &PgPool,
+    expense_id: i32,
     expense_request: UpdateExpenseRequest,
-) -> Result<(), Box<dyn Error>> {
-    let mut expenses = load_expenses(file_name)?;
-
-    let expense = expenses
-        .iter_mut()
-        .find(|expense| expense.id == expense_id)
-        .ok_or("Expense not found")?;
-
-    if let Some(description) = expense_request.description {
-        expense.description = description;
-    }
-
-    if let Some(amount) = expense_request.amount {
-        expense.amount = amount;
-    }
-
-    if let Some(category) = expense_request.category {
-        expense.categories = category;
-    }
-
-    expense.updated_at = Utc::now();
-
-    save_expense(file_name, &expenses)?;
-
-    Ok(())
+) -> Result<Expense, sqlx::Error> {
+    sqlx::query_as::<_, Expense>(
+        r#"
+        UPDATE expenses
+        SET description = COALESCE($1, description),
+            amount = COALESCE($2, amount),
+            category = COALESCE($3, category),
+            updated_at = NOW()
+        WHERE id = $4
+        RETURNING *
+        "#,
+    )
+    .bind(&expense_request.description)
+    .bind(expense_request.amount)
+    .bind(expense_request.category)
+    .bind(expense_id)
+    .fetch_one(pool)
+    .await
 }
 
-pub fn delete_expense(expense_id: u32, file_name: &str) -> Result<(), Box<dyn Error>> {
-    let mut expenses = load_expenses(file_name)?;
+pub async fn delete_expense(pool: &PgPool, expense_id: i32) -> Result<(), sqlx::Error> {
+    sqlx::query("DELETE FROM expenses WHERE id = $1")
+        .bind(expense_id)
+        .execute(pool)
+        .await?;
 
-    if let Some(index) = expenses.iter().position(|expense| expense.id == expense_id) {
-        expenses.remove(index);
-        save_expense(file_name, &expenses)?;
-        Ok(())
-    } else {
-        Err("Expense not found".into())
-    }
-
-}
-
-pub fn get_summary_of_expense(file_name: &str) -> Result<u32, Box<dyn Error>> {
-    let expenses = load_expenses(file_name)?;
-
-    let total: u32 = expenses.iter().map(|expense| expense.amount).sum();
-
-    Ok(total)
-}
-
-pub fn list_expenses(file_name: &str) -> Result<(), Box<dyn Error>> {
-    let expenses = load_expenses(file_name)?;
-
-    if expenses.is_empty() {
-        println!("No expenses found.");
-        return Ok(());
-    }
-
-    for expense in &expenses {
-        println!(
-            "#{} | {} | {} | {:?} | {}",
-            expense.id, expense.description, expense.amount, expense.categories, expense.updated_at
-        );
-    }
     Ok(())
 }
