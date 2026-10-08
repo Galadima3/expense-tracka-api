@@ -44,6 +44,13 @@ impl From<sqlx::Error> for AppError {
     fn from(err: sqlx::Error) -> Self {
         match err {
             sqlx::Error::RowNotFound => AppError::NotFound,
+            sqlx::Error::Database(db_err) => {
+                if db_err.is_unique_violation() {
+                    AppError::Conflict
+                } else {
+                    AppError::Database
+                }
+            }
             other => {
                 tracing::error!("Database error: {other:?}");
                 AppError::Database
@@ -52,8 +59,3 @@ impl From<sqlx::Error> for AppError {
     }
 }
 
-// impl From<validator::ValidationError> for AppError {
-//     fn from(err: validator::ValidationError) -> Self {
-        
-//     }
-// }

@@ -25,14 +25,13 @@ mod service;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     dotenv().ok();
+
     tracing_subscriber::fmt::init();
 
     let config = Config::from_env();
-
     let pool = init_db(&config.database_url).await?;
 
     let app_state = AppState { db_pool: pool };
-
     let app = app(app_state);
 
     let listener = tokio::net::TcpListener::bind(&config.server_addr).await?;
@@ -40,6 +39,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
         .await?;
+    
     Ok(())
 }
 
